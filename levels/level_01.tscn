@@ -1,0 +1,58 @@
+[gd_scene format=3 uid="uid://c30edey721frs"]
+
+[ext_resource type="Texture2D" uid="uid://dftugm0r5hkgn" path="res://assets/backgrounds/level01_bg.png" id="1_81a5f"]
+[ext_resource type="Script" uid="uid://dl6w7mdtpaqsw" path="res://scripts/player.gd" id="1_player"]
+[ext_resource type="SpriteFrames" uid="uid://bv7a4qetsvfnm" path="res://assets/characters/player_01/player_frames.tres" id="5_player_frames"]
+[ext_resource type="AudioStream" path="res://assets/audio/heal.mp3" id="6_heal_sfx"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_3adaa"]
+size = Vector2(4000, 40)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_3adaa"]
+radius = 12.0
+height = 44.0
+
+[node name="Level01" type="Node2D" unique_id=869483102]
+
+[node name="Background" type="Node2D" parent="." unique_id=1467412294]
+
+[node name="BG" type="Sprite2D" parent="Background" unique_id=1046697312]
+position = Vector2(134, -261)
+texture = ExtResource("1_81a5f")
+
+[node name="Ground" type="StaticBody2D" parent="." unique_id=1795601190]
+position = Vector2(0, 120)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Ground" unique_id=1225483772]
+shape = SubResource("RectangleShape2D_3adaa")
+
+[node name="Player" type="CharacterBody2D" parent="." unique_id=891007624]
+position = Vector2(0, 80)
+script = ExtResource("1_player")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player" unique_id=1214129072]
+position = Vector2(0, -3)
+shape = SubResource("CapsuleShape2D_3adaa")
+
+[node name="Visual" type="AnimatedSprite2D" parent="Player" unique_id=1452981939]
+position = Vector2(-22, -61)
+sprite_frames = ExtResource("5_player_frames")
+animation = &"idle"
+autoplay = "idle"
+centered = false
+
+[node name="SlideFx" type="AnimatedSprite2D" parent="Player"]
+visible = false
+sprite_frames = ExtResource("5_player_frames")
+animation = &"slide_fx"
+centered = false
+
+[node name="HealSfx" type="AudioStreamPlayer2D" parent="Player"]
+stream = ExtResource("6_heal_sfx")
+pitch_scale = 1.28
+
+[node name="Camera2D" type="Camera2D" parent="Player" unique_id=1467348047]
+offset = Vector2(0, -85)
+zoom = Vector2(2.3, 2.3)
+process_callback = 0
+position_smoothing_enabled = true
