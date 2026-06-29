@@ -2,9 +2,11 @@ extends CharacterBody2D
 
 enum MoveState {
 	IDLE,
+	WALK_START,
 	WALK,
 	RUN_START,
 	RUN,
+	RUN_TURN,
 	RUN_TO_WALK,
 	RUN_STOP,
 	CROUCH,
@@ -12,6 +14,7 @@ enum MoveState {
 	BACK_DODGE,
 	HURT,
 	HEAL,
+	LIGHT_ATTACK_1,
 	JUMP,
 	LAND,
 }
@@ -32,23 +35,26 @@ enum CrouchPhase {
 	EXIT,
 }
 
-const WALK_SPEED := 130.0
+const WALK_SPEED := 125.0
 const RUN_SPEED := 300.0
 const GRAVITY := 1200.0
 const JUMP_VELOCITY := -430.0
 const JUMP_HORIZONTAL_SPEED := 180.0
 const JUMP_PREPARE_FRAME_TIME := 0.06
-const JUMP_LOOP_FRAME_TIME := 0.08
+const JUMP_LOOP_FRAME_TIME := 0.06
 const JUMP_LAND_FRAME_TIME := 0.06
 const CROUCH_FRAME_TIME := 0.07
-const SLIDE_FRAME_TIME := 0.03
+const SLIDE_FRAME_TIME := 0.04
 const SLIDE_SPEED := 360.0
-const BACK_DODGE_FRAME_TIME := 0.02
+const BACK_DODGE_FRAME_TIME := 0.035
 const BACK_DODGE_SPEED := 260.0
 const BACK_DODGE_OFFSET_LEFT := Vector2(-108.0, -67.0)
 const BACK_DODGE_OFFSET_RIGHT := Vector2(-33.0, -67.0)
+const LIGHT_ATTACK_1_OFFSET_LEFT := Vector2(-137.0, -69.0)
+const LIGHT_ATTACK_1_OFFSET_RIGHT := Vector2(-23.0, -69.0)
 const HURT_FRAME_TIME := 0.04
-const HEAL_FRAME_TIME := 0.05
+const HEAL_FRAME_TIME := 0.06
+const LIGHT_ATTACK_1_FRAME_TIME := 0.04
 const ACCELERATION := 1200.0
 const FRICTION := 1600.0
 
@@ -58,9 +64,11 @@ const FRICTION := 1600.0
 
 const VISUAL_OFFSETS := {
 	"idle": Vector2(-20.6, -61.0),
+	"walk_start": Vector2(-18.9, -64.0),
 	"walk": Vector2(-18.9, -64.0),
 	"run": Vector2(-29.9, -52.8),
 	"run_start": Vector2(-29.2, -59.0),
+	"run_turn": Vector2(-29.9, -52.8),
 	"run_stop": Vector2(-30.2, -59.0),
 	"crouch": Vector2(-26.5, -56.0),
 	"slide": Vector2(-48.0, -69.0),
@@ -84,6 +92,7 @@ var slide_timer := 0.0
 var slide_frame := 0
 var slide_direction := 0.0
 var slide_input_locked := false
+var run_turn_target_direction := 0
 var back_dodge_timer := 0.0
 var back_dodge_frame := 0
 var back_dodge_direction := 0.0
@@ -93,13 +102,22 @@ var hurt_frame_count := 0
 var hurt_animation := StringName()
 var heal_timer := 0.0
 var heal_frame := 0
+var light_attack_1_timer := 0.0
+var light_attack_1_frame := 0
 var facing := 1
 var last_pressed_direction := 0
 
 func _ready() -> void:
+	_setup_idle_animation()
+	_setup_walk_animations()
+	_setup_run_animation()
+	_setup_jump_animation()
+	_setup_crouch_animation()
+	_setup_slide_animation()
 	_setup_back_dodge_animations()
 	_setup_hurt_animations()
 	_setup_heal_animation()
+	_setup_light_attack_animations()
 	visual.animation_finished.connect(_on_animation_finished)
 	slide_fx.visible = false
 
@@ -114,6 +132,8 @@ func _physics_process(delta: float) -> void:
 		slide_input_locked = false
 	if _try_start_test_hurt():
 		pass
+	elif Input.is_action_just_pressed("light_attack") and is_on_floor() and _can_start_light_attack_1():
+		_start_light_attack_1()
 	elif Input.is_action_just_pressed("heal") and is_on_floor() and _can_start_heal():
 		_start_heal()
 	elif Input.is_action_just_pressed("back_dodge") and is_on_floor() and _can_start_back_dodge():
@@ -132,10 +152,11 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
 
-	if movement_direction != 0.0 and move_state != MoveState.BACK_DODGE:
+	if movement_direction != 0.0 and move_state not in [MoveState.BACK_DODGE, MoveState.RUN_TURN]:
 		facing = int(sign(movement_direction))
 
-	visual.flip_h = facing > 0
+	if move_state != MoveState.RUN_TURN:
+		visual.flip_h = facing > 0
 	slide_fx.flip_h = visual.flip_h
 	_update_animation()
 	if move_state not in [MoveState.SLIDE, MoveState.BACK_DODGE] and slide_fx.visible:
@@ -184,6 +205,22 @@ func _update_move_state(direction: float, wants_run: bool, wants_crouch: bool) -
 		_update_heal()
 		return
 
+	if move_state == MoveState.LIGHT_ATTACK_1:
+		_update_light_attack_1()
+		return
+
+	if move_state == MoveState.RUN_TURN:
+		return
+
+	if move_state == MoveState.WALK_START:
+		if wants_run:
+			move_state = MoveState.RUN_START
+			_play_animation("run_start")
+		elif direction == 0.0:
+			move_state = MoveState.IDLE
+			_play_animation("idle")
+		return
+
 	if wants_crouch and not slide_input_locked and move_state in [MoveState.RUN_START, MoveState.RUN]:
 		_start_slide()
 		return
@@ -216,6 +253,11 @@ func _update_move_state(direction: float, wants_run: bool, wants_crouch: bool) -
 			_play_animation("run_stop")
 		return
 
+	var run_turn_direction := _get_run_turn_direction(direction, wants_run)
+	if move_state == MoveState.RUN and run_turn_direction != 0:
+		_start_run_turn(run_turn_direction)
+		return
+
 	if wants_run:
 		if move_state != MoveState.RUN:
 			move_state = MoveState.RUN_START
@@ -227,7 +269,9 @@ func _update_move_state(direction: float, wants_run: bool, wants_crouch: bool) -
 		move_state = MoveState.RUN_TO_WALK
 		_play_animation_backwards("run_start")
 	elif direction != 0.0:
-		move_state = MoveState.WALK
+		if move_state != MoveState.WALK:
+			move_state = MoveState.WALK_START
+			_play_animation("walk_start")
 	else:
 		move_state = MoveState.IDLE
 
@@ -235,10 +279,14 @@ func _update_animation() -> void:
 	match move_state:
 		MoveState.IDLE:
 			_play_animation("idle")
+		MoveState.WALK_START:
+			pass
 		MoveState.WALK:
 			_play_animation("walk")
 		MoveState.RUN:
 			_play_animation("run")
+		MoveState.RUN_TURN:
+			pass
 		MoveState.CROUCH:
 			pass
 		MoveState.SLIDE:
@@ -249,6 +297,8 @@ func _update_animation() -> void:
 			pass
 		MoveState.HEAL:
 			pass
+		MoveState.LIGHT_ATTACK_1:
+			pass
 		MoveState.JUMP:
 			pass
 		_:
@@ -258,15 +308,20 @@ func _on_animation_finished() -> void:
 	if move_state == MoveState.RUN_START:
 		move_state = MoveState.RUN
 		_play_animation("run")
+	elif move_state == MoveState.RUN_TURN:
+		_finish_run_turn()
 	elif move_state == MoveState.RUN_STOP:
 		move_state = MoveState.IDLE
 		_play_animation("idle")
 	elif move_state == MoveState.RUN_TO_WALK:
 		move_state = MoveState.WALK
 		_play_animation("walk")
+	elif move_state == MoveState.WALK_START:
+		move_state = MoveState.WALK
+		_play_animation("walk")
 
 func _uses_run_speed() -> bool:
-	return move_state in [MoveState.RUN_START, MoveState.RUN]
+	return move_state in [MoveState.RUN_START, MoveState.RUN, MoveState.RUN_TURN]
 
 func _get_current_speed() -> float:
 	if move_state == MoveState.JUMP:
@@ -278,6 +333,8 @@ func _get_current_speed() -> float:
 	if move_state == MoveState.HURT:
 		return 0.0
 	if move_state == MoveState.HEAL:
+		return 0.0
+	if move_state == MoveState.LIGHT_ATTACK_1:
 		return 0.0
 	if _uses_run_speed():
 		return RUN_SPEED
@@ -296,15 +353,99 @@ func _force_play_animation(animation_name: StringName) -> void:
 	visual.speed_scale = 1.0
 	visual.play()
 
+func _setup_idle_animation() -> void:
+	var frames := visual.sprite_frames
+	if frames.has_animation("idle"):
+		frames.set_animation_loop("idle", true)
+		frames.set_animation_speed("idle", 1000.0 / 60.0)
+
+func _setup_walk_animations() -> void:
+	var frames := visual.sprite_frames
+	var texture := load("res://assets/characters/player_01/walk/sprite sheets/from idle.png")
+	_rebuild_animation("walk_start")
+	frames.set_animation_loop("walk_start", false)
+	frames.set_animation_speed("walk_start", 20.0)
+	for frame_index in range(2):
+		frames.add_frame("walk_start", _make_atlas_texture(texture, frame_index, 2, Vector2i(45, 58)))
+
+	if frames.has_animation("walk"):
+		frames.set_animation_loop("walk", true)
+		frames.set_animation_speed("walk", 20.0)
+
+func _setup_run_animation() -> void:
+	var frames := visual.sprite_frames
+	if frames.has_animation("run"):
+		frames.set_animation_loop("run", true)
+		frames.set_animation_speed("run", 1000.0 / 35.0)
+	if frames.has_animation("run_start"):
+		frames.set_animation_loop("run_start", false)
+		frames.set_animation_speed("run_start", 10.0)
+
+	var run_stop_texture := load("res://assets/characters/player_01/run/sprite sheets/run_stop.png")
+	_rebuild_animation("run_stop")
+	frames.set_animation_loop("run_stop", false)
+	frames.set_animation_speed("run_stop", 25.0)
+	for frame_index in range(15):
+		frames.add_frame("run_stop", _make_atlas_texture(run_stop_texture, frame_index, 4, Vector2i(63, 53)))
+
+	var run_turn_texture := load("res://assets/characters/player_01/run/sprite sheets/run_turn.png")
+	_rebuild_animation("run_turn")
+	frames.set_animation_loop("run_turn", false)
+	frames.set_animation_speed("run_turn", 25.0)
+	for frame_index in range(8):
+		frames.add_frame("run_turn", _make_atlas_texture(run_turn_texture, frame_index, 4, Vector2i(59, 51)))
+
+func _setup_jump_animation() -> void:
+	var frames := visual.sprite_frames
+	if frames.has_animation("jump"):
+		frames.set_animation_loop("jump", false)
+		frames.set_animation_speed("jump", 1000.0 / 60.0)
+
+func _setup_crouch_animation() -> void:
+	var frames := visual.sprite_frames
+	var texture := load("res://assets/characters/player_01/crouching/sprite sheets/crouching.png")
+	_rebuild_animation("crouch")
+	frames.set_animation_loop("crouch", false)
+	frames.set_animation_speed("crouch", 1000.0 / 70.0)
+	for frame_index in range(13):
+		frames.add_frame("crouch", _make_atlas_texture(texture, frame_index, 3, Vector2i(53, 50)))
+
+func _setup_slide_animation() -> void:
+	var frames := visual.sprite_frames
+	if frames.has_animation("slide"):
+		frames.set_animation_loop("slide", false)
+		frames.set_animation_speed("slide", 25.0)
+	if frames.has_animation("slide_fx"):
+		frames.set_animation_loop("slide_fx", false)
+		frames.set_animation_speed("slide_fx", 25.0)
+
+func _start_run_turn(direction: float) -> void:
+	run_turn_target_direction = int(sign(direction))
+	move_state = MoveState.RUN_TURN
+	_set_visual_offset("run_turn")
+	visual.stop()
+	visual.animation = "run_turn"
+	visual.frame = 0
+	visual.frame_progress = 0.0
+	visual.speed_scale = 1.0
+	visual.flip_h = facing > 0
+	visual.play()
+
+func _finish_run_turn() -> void:
+	facing = run_turn_target_direction
+	run_turn_target_direction = 0
+	move_state = MoveState.RUN
+	visual.flip_h = facing > 0
+	_play_animation("run")
+
 func _setup_back_dodge_animations() -> void:
 	var frames := visual.sprite_frames
-	if not frames.has_animation("back_dodge"):
-		frames.add_animation("back_dodge")
-		frames.set_animation_loop("back_dodge", false)
-		frames.set_animation_speed("back_dodge", 24.0)
-		var texture := load("res://assets/characters/player_01/back dodge/sprite sheets/back dodge(fx included).png")
-		for frame_index in range(24):
-			frames.add_frame("back_dodge", _make_atlas_texture(texture, frame_index, 4, Vector2i(142, 61)))
+	var texture := load("res://assets/characters/player_01/back dodge/sprite sheets/back dodge(fx included).png")
+	_rebuild_animation("back_dodge")
+	frames.set_animation_loop("back_dodge", false)
+	frames.set_animation_speed("back_dodge", 1000.0 / 35.0)
+	for frame_index in range(24):
+		frames.add_frame("back_dodge", _make_atlas_texture(texture, frame_index, 4, Vector2i(142, 61)))
 
 func _setup_hurt_animations() -> void:
 	var frames := visual.sprite_frames
@@ -313,19 +454,19 @@ func _setup_hurt_animations() -> void:
 
 	_rebuild_animation("hit")
 	frames.set_animation_loop("hit", false)
-	frames.set_animation_speed("hit", 24.0)
+	frames.set_animation_speed("hit", 25.0)
 	for frame_index in range(10):
 		frames.add_frame("hit", _make_atlas_texture(normal_texture, frame_index, 4, Vector2i(70, 60)))
 
 	_rebuild_animation("normal_hit")
 	frames.set_animation_loop("normal_hit", false)
-	frames.set_animation_speed("normal_hit", 24.0)
+	frames.set_animation_speed("normal_hit", 25.0)
 	for frame_index in range(22):
 		frames.add_frame("normal_hit", _make_atlas_texture(normal_texture, frame_index, 4, Vector2i(70, 60)))
 
 	_rebuild_animation("hard_hit")
 	frames.set_animation_loop("hard_hit", false)
-	frames.set_animation_speed("hard_hit", 24.0)
+	frames.set_animation_speed("hard_hit", 25.0)
 	for frame_index in range(34):
 		frames.add_frame("hard_hit", _make_atlas_texture(hard_texture, frame_index, 6, Vector2i(79, 60)))
 
@@ -334,9 +475,18 @@ func _setup_heal_animation() -> void:
 	var texture := load("res://assets/characters/player_01/healing/sprite sheets/healing_merged.png")
 	_rebuild_animation("heal")
 	frames.set_animation_loop("heal", false)
-	frames.set_animation_speed("heal", 24.0)
+	frames.set_animation_speed("heal", 1000.0 / 60.0)
 	for frame_index in range(18):
 		frames.add_frame("heal", _make_atlas_texture(texture, frame_index, 3, Vector2i(97, 81)))
+
+func _setup_light_attack_animations() -> void:
+	var frames := visual.sprite_frames
+	var texture := load("res://assets/characters/player_01/atk/1x atk/sprite sheets/1x atk_merged.png")
+	_rebuild_animation("light_attack_1")
+	frames.set_animation_loop("light_attack_1", false)
+	frames.set_animation_speed("light_attack_1", 25.0)
+	for frame_index in range(17):
+		frames.add_frame("light_attack_1", _make_atlas_texture(texture, frame_index, 4, Vector2i(160, 64)))
 
 func _rebuild_animation(animation_name: StringName) -> void:
 	var frames := visual.sprite_frames
@@ -355,6 +505,7 @@ func _make_atlas_texture(texture: Texture2D, frame_index: int, columns: int, fra
 func _can_start_back_dodge() -> bool:
 	return move_state in [
 		MoveState.IDLE,
+		MoveState.WALK_START,
 		MoveState.WALK,
 		MoveState.RUN_START,
 		MoveState.RUN,
@@ -364,6 +515,16 @@ func _can_start_back_dodge() -> bool:
 
 func _can_start_heal() -> bool:
 	return move_state in [MoveState.IDLE, MoveState.WALK, MoveState.RUN_STOP]
+
+func _can_start_light_attack_1() -> bool:
+	return move_state in [
+		MoveState.IDLE,
+		MoveState.WALK_START,
+		MoveState.WALK,
+		MoveState.RUN_START,
+		MoveState.RUN,
+		MoveState.RUN_STOP,
+	]
 
 func _get_input_direction() -> float:
 	var left_pressed := Input.is_action_pressed("move_left")
@@ -381,6 +542,17 @@ func _get_input_direction() -> float:
 	last_pressed_direction = 0
 	return 0.0
 
+func _get_run_turn_direction(direction: float, wants_run: bool) -> int:
+	if not wants_run:
+		return 0
+	if facing > 0 and Input.is_action_just_pressed("move_left"):
+		return -1
+	if facing < 0 and Input.is_action_just_pressed("move_right"):
+		return 1
+	if direction != 0.0 and int(sign(direction)) != facing:
+		return int(sign(direction))
+	return 0
+
 func _get_movement_direction(direction: float) -> float:
 	if move_state == MoveState.JUMP:
 		return jump_direction
@@ -388,11 +560,15 @@ func _get_movement_direction(direction: float) -> float:
 		return 0.0
 	if move_state == MoveState.SLIDE:
 		return slide_direction
+	if move_state == MoveState.RUN_TURN:
+		return float(run_turn_target_direction)
 	if move_state == MoveState.BACK_DODGE:
 		return back_dodge_direction
 	if move_state == MoveState.HURT:
 		return 0.0
 	if move_state == MoveState.HEAL:
+		return 0.0
+	if move_state == MoveState.LIGHT_ATTACK_1:
 		return 0.0
 
 	return direction
@@ -566,6 +742,7 @@ func _update_slide() -> void:
 	slide_frame += 1
 	if slide_frame > 16:
 		slide_direction = 0.0
+		velocity.x = 0.0
 		_hide_slide_fx()
 		_return_to_ground_state()
 		return
@@ -617,6 +794,7 @@ func _update_back_dodge() -> void:
 	back_dodge_frame += 1
 	if back_dodge_frame > 23:
 		_clear_back_dodge_visuals()
+		velocity.x = 0.0
 		_return_to_ground_state()
 		return
 
@@ -711,6 +889,38 @@ func _set_heal_frame(frame_index: int) -> void:
 	visual.speed_scale = 0.0
 	visual.frame = frame_index
 	visual.frame_progress = 0.0
+
+func _start_light_attack_1() -> void:
+	_clear_slide_visuals()
+	_clear_back_dodge_visuals()
+	move_state = MoveState.LIGHT_ATTACK_1
+	light_attack_1_timer = 0.0
+	light_attack_1_frame = 0
+	velocity.x = 0.0
+	_set_light_attack_1_frame(light_attack_1_frame)
+
+func _update_light_attack_1() -> void:
+	light_attack_1_timer += get_physics_process_delta_time()
+	if light_attack_1_timer < LIGHT_ATTACK_1_FRAME_TIME:
+		return
+
+	light_attack_1_timer = 0.0
+	light_attack_1_frame += 1
+	if light_attack_1_frame >= 17:
+		_return_to_ground_state()
+		return
+
+	_set_light_attack_1_frame(light_attack_1_frame)
+
+func _set_light_attack_1_frame(frame_index: int) -> void:
+	visual.position = LIGHT_ATTACK_1_OFFSET_RIGHT if facing > 0 else LIGHT_ATTACK_1_OFFSET_LEFT
+	visual.animation = "light_attack_1"
+	visual.speed_scale = 0.0
+	visual.frame = frame_index
+	visual.frame_progress = 0.0
+
+func _is_light_attack_1_active_frame() -> bool:
+	return light_attack_1_frame >= 0 and light_attack_1_frame <= 9
 
 func _update_landing() -> void:
 	jump_timer += get_physics_process_delta_time()
