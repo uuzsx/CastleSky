@@ -3,14 +3,69 @@
 [ext_resource type="Texture2D" uid="uid://dftugm0r5hkgn" path="res://assets/backgrounds/level01_bg.png" id="1_81a5f"]
 [ext_resource type="Script" uid="uid://dl6w7mdtpaqsw" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="SpriteFrames" uid="uid://bv7a4qetsvfnm" path="res://assets/characters/player_01/player_frames.tres" id="5_player_frames"]
-[ext_resource type="AudioStream" path="res://assets/audio/heal.mp3" id="6_heal_sfx"]
+[ext_resource type="AudioStream" uid="uid://cgxe352dytwhc" path="res://assets/audio/heal.mp3" id="6_heal_sfx"]
+[ext_resource type="Script" uid="uid://b4duy4oilbr1n" path="res://scripts/agis.gd" id="7_agis_script"]
+[ext_resource type="SpriteFrames" uid="uid://gwn63p8rjid4" path="res://assets/enemies/agis/agis_frames.tres" id="8_agis_frames"]
+[ext_resource type="Texture2D" uid="uid://dkoeiba1vvf1u" path="res://assets/ui/ornate_fantasy/agis_health_frame.png" id="9_agis_health_frame"]
+[ext_resource type="AudioStream" uid="uid://dlk07rjwd8pm0" path="res://assets/audio/agis_death.mp3" id="10_agis_death_sfx"]
+[ext_resource type="FontFile" uid="uid://bajsoyogfn5vq" path="res://assets/fonts/antiquity-print.ttf" id="11_agis_name_font"]
+[ext_resource type="Texture2D" uid="uid://li70impo1hbg" path="res://assets/ui/ornate_fantasy/PreSizedOrnateFantasyUI.png" id="12_portrait_ui"]
+[ext_resource type="Script" uid="uid://cgvxiro4gfn58" path="res://scripts/runtime_canvas_layer.gd" id="13_runtime_canvas"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_3adaa"]
-size = Vector2(4000, 40)
+size = Vector2(4000, 63)
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_3adaa"]
 radius = 12.0
 height = 44.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_player_attack"]
+size = Vector2(120, 40)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_attack_preview_1"]
+size = Vector2(124, 56)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_attack_preview_2"]
+size = Vector2(100, 56)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_attack_preview_3"]
+size = Vector2(88, 76)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_attack_preview_4"]
+size = Vector2(96, 70)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_attack_preview_5"]
+size = Vector2(160, 96)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_agis"]
+radius = 30.0
+height = 150.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_agis_hurtbox"]
+size = Vector2(205, 85)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_agis_hurtbox_lower"]
+size = Vector2(40, 92)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_portrait_frame"]
+atlas = ExtResource("12_portrait_ui")
+region = Rect2(1456, 880, 63, 63)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_health_frame"]
+atlas = ExtResource("12_portrait_ui")
+region = Rect2(1568, 880, 111, 31)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_health_fill"]
+atlas = ExtResource("12_portrait_ui")
+region = Rect2(608, 48, 111, 31)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_status_bar"]
+atlas = ExtResource("12_portrait_ui")
+region = Rect2(1536, 944, 95, 15)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_status_fill"]
+atlas = ExtResource("12_portrait_ui")
+region = Rect2(579, 173, 89, 5)
 
 [node name="Level01" type="Node2D" unique_id=869483102]
 
@@ -24,14 +79,16 @@ texture = ExtResource("1_81a5f")
 position = Vector2(0, 120)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Ground" unique_id=1225483772]
+position = Vector2(0, -15)
 shape = SubResource("RectangleShape2D_3adaa")
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=891007624]
+z_index = 10
 position = Vector2(0, 80)
 script = ExtResource("1_player")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player" unique_id=1214129072]
-position = Vector2(0, -3)
+position = Vector2(0, -28)
 shape = SubResource("CapsuleShape2D_3adaa")
 
 [node name="Visual" type="AnimatedSprite2D" parent="Player" unique_id=1452981939]
@@ -41,13 +98,13 @@ animation = &"idle"
 autoplay = "idle"
 centered = false
 
-[node name="SlideFx" type="AnimatedSprite2D" parent="Player"]
+[node name="SlideFx" type="AnimatedSprite2D" parent="Player" unique_id=459322512]
 visible = false
 sprite_frames = ExtResource("5_player_frames")
 animation = &"slide_fx"
 centered = false
 
-[node name="HealSfx" type="AudioStreamPlayer2D" parent="Player"]
+[node name="HealSfx" type="AudioStreamPlayer2D" parent="Player" unique_id=1188688181]
 stream = ExtResource("6_heal_sfx")
 pitch_scale = 1.28
 
@@ -56,3 +113,194 @@ offset = Vector2(0, -85)
 zoom = Vector2(2.3, 2.3)
 process_callback = 0
 position_smoothing_enabled = true
+
+[node name="AttackHitBox" type="Area2D" parent="Player" unique_id=1562198208]
+monitoring = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player/AttackHitBox" unique_id=430778905]
+position = Vector2(71, -40)
+shape = SubResource("RectangleShape2D_player_attack")
+
+[node name="AttackHitboxPreview" type="Area2D" parent="Player" unique_id=97921602]
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Attack1Preview" type="CollisionShape2D" parent="Player/AttackHitboxPreview" unique_id=1401901760]
+position = Vector2(80, -36)
+shape = SubResource("RectangleShape2D_attack_preview_1")
+disabled = true
+
+[node name="Attack2Preview" type="CollisionShape2D" parent="Player/AttackHitboxPreview" unique_id=1535513502]
+position = Vector2(70, -36)
+shape = SubResource("RectangleShape2D_attack_preview_2")
+disabled = true
+
+[node name="Attack3Preview" type="CollisionShape2D" parent="Player/AttackHitboxPreview" unique_id=113428491]
+position = Vector2(62, -46)
+shape = SubResource("RectangleShape2D_attack_preview_3")
+disabled = true
+
+[node name="Attack4Preview" type="CollisionShape2D" parent="Player/AttackHitboxPreview" unique_id=1760307120]
+position = Vector2(66, -43)
+shape = SubResource("RectangleShape2D_attack_preview_4")
+disabled = true
+
+[node name="Attack5Preview" type="CollisionShape2D" parent="Player/AttackHitboxPreview" unique_id=1745844502]
+position = Vector2(104, -53)
+shape = SubResource("RectangleShape2D_attack_preview_5")
+disabled = true
+
+[node name="Agis" type="CharacterBody2D" parent="." unique_id=1851742838 groups=["dodge_passthrough"]]
+z_index = 5
+collision_layer = 0
+position = Vector2(260, 80)
+script = ExtResource("7_agis_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Agis" unique_id=994321775]
+position = Vector2(0, -105)
+shape = SubResource("CapsuleShape2D_agis")
+
+[node name="Visual" type="AnimatedSprite2D" parent="Agis" unique_id=1140156697]
+position = Vector2(-161, -327)
+sprite_frames = ExtResource("8_agis_frames")
+animation = &"idle"
+autoplay = "idle"
+centered = false
+
+[node name="HurtBox" type="Area2D" parent="Agis" unique_id=1982610302]
+
+[node name="UpperBodyShape" type="CollisionShape2D" parent="Agis/HurtBox" unique_id=729088337]
+position = Vector2(0, -168)
+shape = SubResource("RectangleShape2D_agis_hurtbox")
+
+[node name="LowerBodyShape" type="CollisionShape2D" parent="Agis/HurtBox" unique_id=245791169]
+position = Vector2(0, -80)
+shape = SubResource("RectangleShape2D_agis_hurtbox_lower")
+
+[node name="HitPoints" type="Node2D" parent="Agis" unique_id=856171745]
+
+[node name="UpperHitPoint" type="Marker2D" parent="Agis/HitPoints" unique_id=754247684]
+position = Vector2(0, -168)
+
+[node name="LowerHitPoint" type="Marker2D" parent="Agis/HitPoints" unique_id=1283777339]
+position = Vector2(0, -80)
+
+[node name="HitFx" type="AnimatedSprite2D" parent="Agis" unique_id=682472518]
+visible = false
+centered = false
+
+[node name="DeathSfx" type="AudioStreamPlayer2D" parent="Agis" unique_id=1224438474]
+stream = ExtResource("10_agis_death_sfx")
+pitch_scale = 0.8
+
+[node name="BossUI" type="CanvasLayer" parent="." unique_id=1052348856]
+offset = Vector2(0, 140)
+transform = Transform2D(1, 0, 0, 1, 0, 140)
+script = ExtResource("13_runtime_canvas")
+
+[node name="AgisHealthBar" type="Control" parent="BossUI" unique_id=2138497378]
+layout_mode = 3
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -216.0
+offset_top = 29.0
+offset_right = 216.0
+offset_bottom = 45.0
+grow_horizontal = 2
+scale = Vector2(1.25, 1.45)
+pivot_offset = Vector2(216, 8)
+
+[node name="Name" type="Label" parent="BossUI/AgisHealthBar" unique_id=1377988309]
+z_index = 3
+layout_mode = 0
+offset_top = -16.0
+offset_right = 432.0
+offset_bottom = 4.0
+theme_override_colors/font_color = Color(0.592157, 0.05098, 0.372549, 1)
+theme_override_fonts/font = ExtResource("11_agis_name_font")
+theme_override_font_sizes/font_size = 10
+text = "Agis"
+horizontal_alignment = 1
+
+[node name="Back" type="ColorRect" parent="BossUI/AgisHealthBar" unique_id=1736160203]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 430.0
+offset_bottom = 5.0
+color = Color(0.09, 0.01, 0.015, 1)
+
+[node name="Fill" type="ColorRect" parent="BossUI/AgisHealthBar" unique_id=905579170]
+z_index = 2
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 430.0
+offset_bottom = 5.0
+color = Color(0.592157, 0.05098, 0.372549, 1)
+
+[node name="Frame" type="TextureRect" parent="BossUI/AgisHealthBar" unique_id=1778184480]
+z_index = 1
+layout_mode = 0
+offset_right = 432.0
+offset_bottom = 16.0
+texture = ExtResource("9_agis_health_frame")
+expand_mode = 1
+stretch_mode = 1
+
+[node name="PlayerUI" type="CanvasLayer" parent="." unique_id=1177523867]
+offset = Vector2(0, 140)
+transform = Transform2D(1, 0, 0, 1, 0, 140)
+script = ExtResource("13_runtime_canvas")
+
+[node name="PortraitFrame" type="TextureRect" parent="PlayerUI" unique_id=543148265]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 79.0
+offset_bottom = 79.0
+texture = SubResource("AtlasTexture_player_portrait_frame")
+expand_mode = 1
+stretch_mode = 1
+
+[node name="HealthFrame" type="TextureRect" parent="PlayerUI" unique_id=530491971]
+offset_left = 80.0
+offset_top = 7.0
+offset_right = 191.0
+offset_bottom = 38.0
+texture = SubResource("AtlasTexture_player_health_frame")
+expand_mode = 1
+stretch_mode = 1
+
+[node name="HealthFill" type="TextureRect" parent="PlayerUI" unique_id=105735136]
+z_index = 1
+offset_left = 80.0
+offset_top = 6.0
+offset_right = 191.0
+offset_bottom = 37.0
+texture = SubResource("AtlasTexture_player_health_fill")
+expand_mode = 1
+stretch_mode = 1
+
+[node name="StatusBarFrame" type="TextureRect" parent="PlayerUI" unique_id=1029400095]
+offset_left = 80.0
+offset_top = 30.0
+offset_right = 175.0
+offset_bottom = 45.0
+texture = SubResource("AtlasTexture_player_status_bar")
+expand_mode = 1
+stretch_mode = 1
+
+[node name="StatusBarFill" type="TextureRect" parent="PlayerUI" unique_id=1856946755]
+z_index = 1
+offset_left = 83.0
+offset_top = 35.0
+offset_right = 172.0
+offset_bottom = 40.0
+texture = SubResource("AtlasTexture_player_status_fill")
+expand_mode = 1
+stretch_mode = 1
+
+[node name="DamageNumbers" type="CanvasLayer" parent="." unique_id=1264539883]

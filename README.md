@@ -1,75 +1,103 @@
 # CastleSky
 
-`CastleSky` 是一个使用 Godot 4.7 制作中的横版冒险动作闯关游戏。当前阶段的重点不是做完整关卡，而是一步一步把角色动作、手感、动画衔接和基础场景搭起来，方便后续继续扩展成完整的 ARPG / platformer 项目。
+`CastleSky` 是一个使用 Godot 4.7 制作的横版冒险动作闯关游戏。当前阶段的重点是先把玩家角色的移动、跳跃、空中机动、连段攻击、Boss 木桩、受击反馈和 UI 框架打磨清楚，方便后续继续扩展成完整的 platformer / ARPG 项目。
 
-目前项目已经完成了第一版角色控制框架：移动、奔跑、跳跃、蹲下、滑铲、后翻滚、受击测试、治疗动作和治疗音效。
+目前项目已经形成一套偏高速动作游戏的基础手感：移动和奔跑会影响跳跃距离、二段跳距离、dash 距离和落地动作，空中攻击又能和 dash、二段跳互相衔接。
 
-## 当前操作键位
+## 项目入口
+
+| 类型 | 路径 |
+| --- | --- |
+| 主场景 | `levels/level_01.tscn` |
+| 玩家脚本 | `scripts/player.gd` |
+| Agis 脚本 | `scripts/agis.gd` |
+| 玩家动画资源 | `assets/characters/player_01/player_frames.tres` |
+| Agis 动画资源 | `assets/enemies/agis/agis_frames.tres` |
+| UI 资源 | `assets/ui/ornate_fantasy/` |
+| 音效资源 | `assets/audio/` |
+
+## 当前键位
 
 | 功能 | 键位 |
 | --- | --- |
-| 向左移动 | `A` / `Left` |
-| 向右移动 | `D` / `Right` |
-| 下蹲 / 滑铲触发 | `S` / `Down` |
+| 左移 | `A` / `Left` |
+| 右移 | `D` / `Right` |
+| 上方向输入 | `W` / `Up` |
+| 下蹲 / 滑铲输入 | `S` / `Down` |
 | 奔跑 | `Shift` |
-| 跳跃 | `Space` |
-| 后翻滚 | `Q` |
+| 跳跃 / 二段跳 | `Space` |
+| 地面后翻滚 / 空中 dash | `K` |
+| 普通攻击 / 空中攻击 | `J` |
+| 空中升空攻击 | `W + J` / `Up + J` |
 | 治疗 | `U` |
-| 测试受击 1 | `H + 1` |
-| 测试受击 2 | `H + 2` |
-| 测试受击 3 | `H + 3` |
+| 玩家扣血测试 | `T` |
+| 受击测试 1 | `H + 1` |
+| 受击测试 2 | `H + 2` |
+| 受击测试 3 | `H + 3` |
 
-## 已实现动作
+## 核心参数
 
-### 站立与移动
+| 参数 | 当前值 | 说明 |
+| --- | --- | --- |
+| `WALK_SPEED` | `125.0` | 普通移动速度 |
+| `RUN_SPEED` | `300.0` | 奔跑速度 |
+| `GRAVITY` | `1200.0` | 普通重力 |
+| `JUMP_VELOCITY` | `-430.0` | 一段跳初速度 |
+| `DOUBLE_JUMP_VELOCITY` | `-390.0` | 二段跳初速度 |
+| `AIR_DASH_WALK_SPEED` | `250.0` | 行走速度体系下的空中 dash |
+| `AIR_DASH_RUN_SPEED` | `360.0` | 奔跑速度体系下的空中 dash |
+| `SLIDE_SPEED` | `360.0` | 滑铲速度 |
+| `BACK_DODGE_SPEED` | `260.0` | 后翻滚速度 |
+| `PLAYER_MAX_HP` | `100.0` | 玩家最大生命 |
 
-角色默认处于 `idle` 状态。
+## 玩家状态总览
 
-移动链路：
+玩家当前主要状态包括：
 
 ```text
-idle -> 按方向键 -> walk
+IDLE
+WALK_START / WALK
+RUN_START / RUN / RUN_TURN / RUN_TO_WALK / RUN_STOP
+CROUCH
+SLIDE
+BACK_DODGE
+JUMP / DOUBLE_JUMP / AIR_DASH / LAND / ROLL_LAND
+LIGHT_ATTACK_1-5
+JUMP_ATTACK_1 / JUMP_ATTACK_2
+HURT
+HEAL
+```
+
+## 移动与奔跑
+
+普通移动使用 `A/D` 或方向键。按下方向键后会先进入 `walk_start`，然后循环 `walk`。
+
+```text
+idle -> 按方向键 -> walk_start -> walk
 walk -> 松开方向键 -> idle
 ```
 
-当前移动速度：
-
-```text
-walk: 130
-run: 300
-```
-
-### 奔跑
-
-只要方向键和 `Shift` 同时处于按下状态，就会进入奔跑。
-
-奔跑链路：
+奔跑由方向键和 `Shift` 共同触发。
 
 ```text
 方向键 + Shift -> run_start -> run
-run + 松开 Shift 但方向键还按着 -> run_start 倒放 -> walk
+run + 松开 Shift 但方向键仍按住 -> run_to_walk -> walk
 run + 松开方向键 -> run_stop -> idle
 ```
 
-说明：
+当前 `run_turn` 已接入转向逻辑：玩家奔跑时不松开 `Shift`，直接切换反方向，会先播放 `run_turn`，播放完后再回到 `run`。
 
-`run_start` 用来表现从移动进入奔跑的启动动作。  
-从奔跑回到普通移动时，目前使用 `run_start` 倒放，作为 `run_to_walk` 的过渡。  
-`run_turn` 暂时移除，后续如果要做转身衔接，会重新单独实现。
+## 跳跃系统
 
-### 跳跃
-
-普通跳跃使用 `jump` 动画，共 24 帧。
-
-跳跃分段：
+普通跳跃使用完整 `jump` 动画，共 24 帧。
 
 | 帧范围 | 含义 |
 | --- | --- |
 | 1-4 | 准备起跳 |
-| 5-10 | 上升循环 |
+| 5-10 | 上升 loop |
 | 11-16 | 空中停留 |
-| 16-20 | 下落循环 |
-| 21-24 | 落地 |
+| 16-20 | 下落 loop |
+| 21-24 | 落地收尾 |
 
 跳跃链路：
 
@@ -77,87 +105,200 @@ run + 松开方向键 -> run_stop -> idle
 Space -> prepare -> up loop -> air -> fall loop -> land -> idle / walk / run_start
 ```
 
-跳跃规则：
+跳跃会继承当前速度体系：
 
-起跳时如果没有按方向键，就是垂直跳。  
-在跳跃前 1-20 帧期间，如果按下左或右，会锁定为对应方向的斜跳。  
-落地后会根据当前输入回到 `idle`、`walk` 或 `run_start`。
+- 行走时起跳，水平速度继承 `WALK_SPEED`。
+- 奔跑时起跳，水平速度继承 `RUN_SPEED`。
+- 垂直起跳后，在 1-20 帧期间按左右方向，会锁定对应方向。
 
-当前跳跃参数：
+## 二段跳
+
+二段跳使用 `double jump_vertical` 和 `double jump_forward`。
+
+当前规则：
+
+- 垂直二段跳：没有水平方向时触发，不接 roll landing。
+- 行走方向二段跳：继承行走速度，不接 roll landing。
+- 奔跑方向二段跳：继承奔跑速度，落地前会插入 `roll_landing`。
+
+奔跑方向二段跳落地链路：
 
 ```text
-gravity: 1200
-jump velocity: -430
-jump horizontal speed: 180
+double_jump_forward -> fall loop -> roll_landing -> run
 ```
 
-### 蹲下
+普通一段跳落地仍然使用 `jump` 的 21-24 帧。奔跑二段跳的 `roll_landing` 是额外插入的衔接动作。
 
-按住 `S` 或 `Down` 进入蹲下。
+## Dash
 
-蹲下动画链路：
+空中按 `K` 触发 dash。地面按 `K` 是后翻滚。
+
+dash 特点：
+
+- 只能在空中触发。
+- 一段跳和二段跳期间都可以 dash。
+- dash 距离取决于进入空中状态时的速度体系。
+- 行走体系 dash 速度为 `250.0`。
+- 奔跑体系 dash 速度为 `360.0`。
+- dash 会刷新一次空中攻击机会。
+- dash 可以被空中攻击中断，避免冲过目标后打不中。
+- dash 可以穿过 Agis。
+
+dash 视觉层：
+
+- 主体动画使用 `aerial dash` 第一排 6 帧。
+- 烟雾使用 `aerial dash_smoke`，在 dash 起点原地播放，不跟随玩家。
+- 残影使用 `aerial dash_fx`，同样在 dash 起点播放。
+
+## 下蹲
+
+下蹲使用 `S/Down`。
 
 ```text
 按住 S/Down -> crouch enter(1-6) -> crouch idle loop(7-9)
 松开 S/Down -> crouch exit(10-13) -> idle / walk / run_start
 ```
 
-说明：
+下蹲期间角色不进行水平移动。
 
-蹲下期间角色不会水平移动。  
-素材中的第 14-15 帧目前没有使用。
+## 滑铲
 
-### 滑铲
-
-滑铲只在奔跑期间触发。
-
-滑铲链路：
+滑铲在奔跑期间按 `S/Down` 触发。
 
 ```text
-run_start / run + 按 S/Down -> slide -> idle / walk / run_start
+run_start / run + S/Down -> slide -> idle / walk / run_start
 ```
 
 滑铲规则：
 
-滑铲使用两层动画：`slide_char` 作为角色主层，`slide_merged` 作为特效层。  
-特效层只在第 5-13 帧显示。  
-按住 `S/Down` 不会连续触发滑铲，必须松开后再按一次才能再次滑铲。
+- 滑铲速度为 `360.0`。
+- 17 帧动画，40ms 每帧。
+- 1-2 帧为 from。
+- 3-15 帧为 slide。
+- 16-17 帧为 to idle。
+- 按住 `S/Down` 不会连续触发，必须松开后再按。
+- 滑铲期间可以穿过 Agis。
 
-当前滑铲参数：
+## 后翻滚
 
-```text
-slide speed: 360
-slide frame time: 0.03
-```
-
-### 后翻滚
-
-按 `Q` 触发后翻滚。
-
-后翻滚链路：
+地面按 `K` 触发后翻滚。
 
 ```text
-Q -> back_dodge -> idle / walk / run_start
+K -> back_dodge -> idle / walk / run_start
 ```
 
-说明：
+后翻滚规则：
 
-后翻滚目前只使用 `back dodge(fx included).png` 这一张合并贴图，不再使用单独的特效层。  
-动作期间角色会朝当前面向的反方向位移。  
-后翻滚结束后会根据当前输入回到地面状态。
+- 使用 `back dodge(fx included)` 合并贴图。
+- 24 帧动画，35ms 每帧。
+- 移动方向是当前面朝方向的反方向。
+- 后翻滚期间可以穿过 Agis。
 
-当前后翻滚参数：
+## 地面攻击
+
+地面普通攻击使用 `J`，当前是五段连段。
 
 ```text
-back dodge speed: 260
-back dodge frame time: 0.02
+J -> 1段
+短时间内 J -> 2段
+短时间内 J -> 3段 + 4段自动衔接
+短时间内 J -> 5段
 ```
+
+连段窗口：
+
+```text
+LIGHT_ATTACK_COMBO_WINDOW = 0.3s
+```
+
+也就是说，如果超过 0.3 秒没有继续按 `J`，下一次攻击会从第一段重新开始。
+
+### 地面攻击素材与帧率
+
+| 段数 | 动画 | 贴图 | 帧数 | 每帧时间 |
+| --- | --- | --- | --- | --- |
+| 1段 | `light_attack_1` | `1x atk_merged.png` | 17 | 40ms |
+| 2段 | `light_attack_2` | `2x atk_merged(short).png` | 19 | 40ms |
+| 3段 | `light_attack_3` | `2x-1 atk_merged.png` | 6 | 40ms |
+| 4段 | `light_attack_4` | `2x-2 atk_merged.png` | 10 | 40ms |
+| 5段 | `light_attack_5` | `3x atk_merged.png` | 34 | 35ms |
+
+### 地面攻击移动
+
+地面攻击不会默认滑行。只有按住攻击朝向的方向键时，才会在指定帧内轻微推进。
+
+| 段数 | 推进帧 | 速度 |
+| --- | --- | --- |
+| 1段 | 1-10 帧 | `15.0` |
+| 2段 | 1-10 帧 | `15.0` |
+| 3段 | 不推进 | `0.0` |
+| 4段 | 不推进 | `0.0` |
+| 5段 | 1-18 帧 | `30.0` |
+
+注意：代码里的帧编号从 0 开始，所以 1-10 帧对应 `<= 9`，1-18 帧对应 `<= 17`。
+
+### 地面攻击命中帧
+
+| 段数 | 命中触发帧 | 伤害 |
+| --- | --- | --- |
+| 1段 | 第 7 帧附近 | `8` |
+| 2段 | 第 7 帧附近 | `10` |
+| 3段 | 第 4 帧附近 | `6` |
+| 4段 | 第 4 帧附近 | `12` |
+| 5段 | 第 13 帧附近 | `25` |
+
+## 空中攻击
+
+空中攻击使用 `J` 和 `W/Up + J`。
+
+当前空中攻击设计是：
+
+```text
+空中 J -> jump_attack_1
+成功打出 jump_attack_1 后，W/Up + J -> jump_attack_2
+成功打出 jump_attack_2 后，奖励一次 jump_attack_1
+奖励 jump_attack_1 后，空中攻击链结束
+```
+
+完整链路：
+
+```text
+jump_attack_1 -> jump_attack_2 -> bonus jump_attack_1 -> fall / land
+```
+
+### 空中攻击与机动刷新
+
+理论上每次空中机动会刷新一次空中攻击机会：
+
+- 一段跳后，可以空中攻击一次。
+- dash 后，可以再次空中攻击。
+- 二段跳后，可以再次空中攻击。
+
+空中攻击细节：
+
+- 普通 `jump_attack_1` 会继承进入攻击前的水平速度。
+- 如果从行走跳进入，继承行走体系速度。
+- 如果从奔跑跳进入，继承奔跑体系速度。
+- 如果从 dash 进入，继承 dash 速度。
+- `jump_attack_2` 是升空攻击，需要 `W/Up + J`，不继承水平速度。
+- 成功打出 `jump_attack_2` 后，奖励一次 `jump_attack_1`。
+- 奖励的 `jump_attack_1` 不继承速度，因为升空攻击已经清掉水平动量。
+- 空中攻击期间不受重力影响，开始时会把垂直速度清零。
+
+### 空中攻击素材与帧率
+
+| 动作 | 贴图 | 帧数 | 每帧时间 |
+| --- | --- | --- | --- |
+| 空中一段 | `jump attack 1x_merged.png` | 9 | 40ms |
+| 空中二段 / 升空攻击 | `jump atk 2x_merged.png` | 8 | 100ms |
+
+空中二段贴图尺寸为 `400x224`，当前按 `4列 x 2行` 切成 8 帧，每帧 `100x112`。
+
+## 受击与治疗
 
 ### 受击测试
 
-目前受击动作是测试用，不是正式战斗系统。
-
-测试链路：
+当前玩家受击仍然是测试功能：
 
 ```text
 H + 1 -> hit
@@ -165,87 +306,92 @@ H + 2 -> normal_hit
 H + 3 -> hard_hit
 ```
 
-说明：
-
-`hit` 使用 `normal hit` 的前 10 帧。  
-`normal_hit` 使用 `normal hit` 的完整 22 帧。  
-`hard_hit` 使用 `hard hit` 的完整 34 帧。  
-受击期间角色停止水平移动，动画结束后回到地面状态。
+受击期间玩家停止水平移动，动画结束后返回地面状态。
 
 ### 治疗
-
-按 `U` 触发治疗。
-
-治疗链路：
 
 ```text
 U -> heal + heal.mp3 -> idle / walk / run_start
 ```
 
-说明：
+治疗使用 `healing_merged.png`，音效使用 `assets/audio/heal.mp3`。当前玩家 UI 中已有血条显示，`T` 可以测试扣血。
 
-治疗使用 `healing_merged.png`。  
-治疗音效使用 `assets/audio/heal.mp3`。  
-音效已调整到大约匹配治疗动画前段表现。
+## Agis 木桩 Boss
 
-当前治疗参数：
+Agis 当前作为木桩 Boss，用于测试攻击、受击、伤害数字、Boss 血条和死亡流程。
 
-```text
-heal frame time: 0.05
-heal sound pitch scale: 1.28
-```
+### 登场
 
-## 当前场景结构
-
-主场景：
+当玩家接近 Agis 到一定距离后，Agis 播放登场动画。
 
 ```text
-levels/level_01.tscn
+玩家接近 -> Agis intro -> Boss 血条从空补满 -> idle
 ```
 
-主要节点结构：
+登场期间：
+
+- Agis 无敌。
+- 玩家攻击不会扣血。
+- Boss 血条显示，并从左到右补满。
+
+### 受击
+
+Agis 有两个 HurtBox 判定：
+
+- 上半身：横向较宽，用于头部和手臂区域。
+- 下半身：较窄竖向区域，避免打空气也造成伤害。
+
+受击反馈：
+
+- 命中后根据命中区域播放 hit fx。
+- hit fx 使用 `hit_fx_1` 或 `hit_fx_2` 随机播放。
+- Agis 受击时会闪白 `0.1s`。
+- 会生成伤害数字。
+- 普通伤害颜色为 `48C0B0`。
+- 重击伤害颜色为 `5D4CB7`。
+
+### 死亡
+
+Agis 血量为 `300`。
+
+死亡流程：
 
 ```text
-Level01
-Background
-Ground
-Player
-  CollisionShape2D
-  Visual
-  SlideFx
-  HealSfx
-  Camera2D
+HP <= 0 -> Boss 血条立刻隐藏 -> 播放 death -> 播放死亡音效 -> 关闭主碰撞体和 HurtBox -> 死亡动画结束后隐藏尸体
 ```
 
-角色脚本：
+死亡动画当前时长为 4 秒，死亡音效为 `assets/audio/agis_death.mp3`。
+
+### 碰撞策略
+
+Agis 主身体碰撞体仍然保留，但主节点 `collision_layer = 0`，所以玩家正常移动、奔跑、跳跃时可以穿过 Agis，不会被 Boss 身体挡住。
+
+保留主碰撞体的原因是为了后续避免 Boss 或场景逻辑出现掉出地图等问题，同时不影响当前战斗爽感。
+
+## UI
+
+当前已有两套 UI：
+
+- 玩家 UI：头像框、血条、预留状态条。
+- Boss UI：Agis 名字、Boss 血条框、程序渲染血量条。
+
+字体：
 
 ```text
-scripts/player.gd
+assets/fonts/antiquity-print.ttf
 ```
 
-角色动画资源：
+Boss 血条特点：
 
-```text
-assets/characters/player_01/player_frames.tres
-```
-
-治疗音效：
-
-```text
-assets/audio/heal.mp3
-```
-
-背景图：
-
-```text
-assets/backgrounds/level01_bg.png
-```
+- 登场时从空补满。
+- 死亡瞬间立刻隐藏。
+- 名字 `Agis` 显示在血条上方。
 
 ## 相机与项目设置
 
-当前相机挂在 `Player` 下，跟随角色移动。
+相机挂在 `Player` 下。
 
-相机关键设置：
+关键设置：
 
 ```text
 Process Callback: Physics
@@ -257,47 +403,31 @@ Offset: 0, -85
 项目物理帧率：
 
 ```text
-physics_ticks_per_second: 165
+physics/common/physics_ticks_per_second = 165
 ```
 
-这个设置是为了匹配高刷新率显示器，让移动和相机跟随看起来更顺。
+这个设置用于匹配高刷新率显示器，让移动和相机跟随更顺。
 
-## 开发记录
+## 当前开发重点
 
-已经完成：
+已经完成的核心内容：
 
-- 导入角色资源包并整理到 `assets/characters/player_01`
-- 创建第一关基础场景 `level_01`
-- 配置 `Player` 为 `CharacterBody2D`
-- 配置 `Ground` 为 `StaticBody2D`
-- 实现基础移动和奔跑
-- 实现 `run_start`、`run_stop`、`run_to_walk` 动作衔接
-- 暂时移除 `run_turn`，避免转向闪帧和方向错乱
-- 实现普通跳跃和落地动画
-- 实现蹲下三段式动画
-- 实现奔跑滑铲和滑铲特效层
-- 实现后翻滚
-- 实现三种受击测试动画
-- 实现治疗动作和治疗音效
-- 添加基础背景，方便判断跳跃高度和移动距离
-- 调整相机跟随，减少拉扯感
-- 移除攻击逻辑，准备后续从第一段攻击重新开始
+- 玩家基础移动、行走、奔跑、转向、停止衔接。
+- 一段跳、二段跳、奔跑二段跳落地翻滚。
+- 空中 dash、烟雾、残影、穿 Boss。
+- 下蹲、滑铲、后翻滚。
+- 地面五段攻击。
+- 空中一段、升空攻击、奖励空中一段。
+- 玩家受击测试、治疗和血条。
+- Agis 木桩 Boss、登场、血条、受击、死亡。
+- 伤害数字和 hit fx。
+- 玩家 UI 和 Boss UI。
 
-## 暂未实现 / 后续计划
+后续可以继续做：
 
-接下来可以继续做：
-
-- 第一段普通攻击 `1x atk`
-- 连段攻击 `2x atk`、`2x-1 atk`、`2x-2 atk`
-- 重击 `3x atk`
-- 攻击判定 hitbox
-- 敌人基础 AI
-- 受击、伤害、生命值系统
-- 空中冲刺
-- 二段跳
-- 墙滑与墙跳
-- 梯子动作
-- 悬崖攀爬动作
-- 关卡机关和可交互物
-- UI、血条、体力条
-- 宣传视频用的演示关卡
+- Agis 正式攻击玩家。
+- 玩家防御、受身或无敌帧。
+- 更多敌人和关卡机关。
+- 玩家体力条 / 魔法条机制。
+- 墙滑、墙跳、梯子、悬崖动作。
+- 正式关卡流程和胜负条件。
